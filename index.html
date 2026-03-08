@@ -7,9 +7,6 @@
     
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
 
-    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
-
     <style>
         /* RESET E CORES DINÂMICAS */
         * { margin: 0; padding: 0; box-sizing: border-box; outline: none; }
@@ -183,7 +180,8 @@
         /* LISTA ADMIN */
         .admin-list { background: #0a0a0a; border: 1px solid #333; border-radius: 10px; max-height: 300px; overflow-y: auto; margin-top: 15px; padding: 10px; }
         .admin-list-item { display: flex; justify-content: space-between; align-items: center; background: #1a1a1a; padding: 10px; margin-bottom: 8px; border-radius: 8px; border-left: 3px solid var(--amarelo); }
-        .admin-list-item button { background: var(--vermelho); color: white; border: none; padding: 5px 10px; border-radius: 5px; cursor: pointer; }
+        .admin-list-item button { background: transparent; color: var(--vermelho); border: none; cursor: pointer; font-size: 1rem; padding: 5px; }
+        .admin-list-item button:hover { color: red; transform: scale(1.2); }
 
         /* CARROSSEIS (GANHADORES E LIDERANÇA) */
         .showcase-section { text-align: center; margin: 60px 0; padding: 40px 20px; background: rgba(0,0,0,0.4); border-radius: 20px; border: 1px solid #333; position: relative; }
@@ -260,9 +258,21 @@
         .modal-box { background: var(--cinza-card); padding: 30px; border-radius: 20px; width: 95%; max-width: 500px; border: 2px solid var(--amarelo); box-shadow: 0 15px 35px rgba(0,0,0,0.8); max-height: 80vh; overflow-y: auto; }
         .close-modal { text-align: right; cursor: pointer; color: #888; font-size: 1.2rem; }
         .close-modal:hover { color: white; }
+
+        /* OVERLAY DE CARREGAMENTO */
+        #loading-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: #121212; z-index: 99999; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 20px; }
+        #loading-overlay p { color: var(--amarelo); font-weight: bold; font-size: 1.1rem; letter-spacing: 2px; }
+        .spinner { width: 60px; height: 60px; border: 5px solid #333; border-top-color: var(--amarelo); border-radius: 50%; animation: spin 0.8s linear infinite; }
+        @keyframes spin { to { transform: rotate(360deg); } }
     </style>
 </head>
 <body>
+
+    <!-- OVERLAY DE CARREGAMENTO INICIAL -->
+    <div id="loading-overlay">
+        <div class="spinner"></div>
+        <p><i class="fa-solid fa-cloud-arrow-down"></i> CARREGANDO DADOS...</p>
+    </div>
 
     <header id="main-header" class="initial-splash">
         <div class="logo-container" onclick="window.location.reload()">
@@ -581,80 +591,128 @@
         </div>
     </section>
 
+    <!-- ============================================================ -->
+    <!-- FIREBASE SDK via CDN (compat mode para uso sem bundler/npm)  -->
+    <!-- ============================================================ -->
+    <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+
     <script>
-        // === ADICIONADO: INICIALIZAÇÃO DO FIREBASE (COM DADOS DO SEU PRINT) ===
+        // ============================================================
+        // CONFIGURAÇÃO DO FIREBASE
+        // ============================================================
         const firebaseConfig = {
-            apiKey: "AIzaSyDp63IjqPaqDXVCwtD23IXOHgzz0YMKX2g",
+            apiKey: "AIzaSyDp63IjqPaqDXVCwtD23IX0Hgzz0YMKX2g",
             authDomain: "clubeguardioes7.firebaseapp.com",
-            databaseURL: "https://clubeguardioes7-default-rtdb.firebaseio.com/",
             projectId: "clubeguardioes7",
             storageBucket: "clubeguardioes7.firebasestorage.app",
             messagingSenderId: "298359700235",
             appId: "1:298359700235:web:1443c53ed16dd3d5f4400e"
         };
-        
-        if (!firebase.apps.length) {
-            firebase.initializeApp(firebaseConfig);
-        }
-        const database = firebase.database();
-        const dbRef = database.ref('dbv_data_v18'); // Nó principal no banco
 
-        // === BANCO DE DADOS LOCAL (Fallback inicial) ===
-        let db = JSON.parse(localStorage.getItem('dbv_data_v18'));
-        
-        // Estrutura Fallback (Criação do banco a primeira vez)
-        if (!db) {
-            db = {
-                usuarios: [{u:'admin', p:'123', tipo:'geral', unid:'Administração', foto:'', perms:{h:true,u:true,m:true,w:true,t:true}}],
-                unidades: [{nome:'Administração', logo:'', cor:'#333333'}, {nome:'Águia', logo:'', cor:'#e63946'}],
-                membros: [],
-                home: { 
-                    title: "Clube Desbravadores", subTitle: "", notice: "", footer: "", social: {fb:'', ig:'', yt:''},
-                    timer: "2026-12-31T23:59", showTimer: true, timerReplace: "O evento começou!", showEventDate: true,
-                    heroesList: [], 
-                    showLideranca: true, showUnidades: true, showGanhadores: true, ganhadoresTitulo: "Desbravadores Destaque",
-                    ganhadores: [],
-                    gallery: [],
-                    colors: { bg: "#121212", txt: "#ffffff", hBg: "transparent", hTxt: "#ffcc00", fBg: "#000000", fTxt: "#ffffff" },
-                    glow: false,
-                    logoUrl: ""
-                }
-            };
-        } else {
-            // Migrações e garantias para base de dados existente
-            if(db.home.showHero !== undefined && db.home.heroesList === undefined) {
-                db.home.heroesList = [];
-                if(db.home.showHero) {
-                    db.home.heroesList.push({ imgs: db.home.heroImg, pos: db.home.heroPos || 'center', size: db.home.heroSize || 'cover', location: 'top' });
-                }
+        firebase.initializeApp(firebaseConfig);
+        const firestoreDb = firebase.firestore();
+        const DOC_REF = firestoreDb.collection('sistema').doc('dados');
+
+        // ============================================================
+        // ESTRUTURA PADRÃO DO BANCO DE DADOS (FALLBACK)
+        // ============================================================
+        const DB_PADRAO = {
+            usuarios: [{u:'admin', p:'123', tipo:'geral', unid:'Administração', foto:'', perms:{h:true,u:true,m:true,w:true,t:true}}],
+            unidades: [{nome:'Administração', logo:'', cor:'#333333'}, {nome:'Águia', logo:'', cor:'#e63946'}],
+            membros: [],
+            home: { 
+                title: "Clube Desbravadores", subTitle: "", notice: "", footer: "", social: {fb:'', ig:'', yt:''},
+                timer: "2026-12-31T23:59", showTimer: true, timerReplace: "O evento começou!", showEventDate: true,
+                heroesList: [], 
+                showLideranca: true, showUnidades: true, showGanhadores: true, ganhadoresTitulo: "Desbravadores Destaque",
+                ganhadores: [],
+                gallery: [],
+                colors: { bg: "#121212", txt: "#ffffff", hBg: "transparent", hTxt: "#ffcc00", fBg: "#000000", fTxt: "#ffffff" },
+                glow: false,
+                logoUrl: ""
             }
-            if(db.home.logoUrl === undefined) db.home.logoUrl = "";
-            if(!db.home.heroesList) db.home.heroesList = [];
-            if(!db.home.ganhadores) db.home.ganhadores = [];
-            if(db.home.showLideranca === undefined) db.home.showLideranca = true;
-            if(db.home.showUnidades === undefined) db.home.showUnidades = true;
-            if(db.home.showGanhadores === undefined) db.home.showGanhadores = true;
-            if(!db.home.ganhadoresTitulo) db.home.ganhadoresTitulo = "Desbravadores Destaque";
-            if(!db.home.subTitle) db.home.subTitle = "";
-            db.membros.forEach(m => { if(!m.historico) m.historico = []; });
-            db.unidades.forEach(u => { if(!u.cor) u.cor = '#333333'; });
-            db.usuarios.forEach(u => { if(!u.perms) u.perms = {}; if(u.perms.w === undefined) u.perms.w = u.tipo === 'geral'; });
-        }
+        };
 
+        // ============================================================
+        // VARIÁVEIS GLOBAIS
+        // ============================================================
+        let db = null;
         let user = null;
-        
-        // Controle de Carrosséis e Slide
         let slideIntervalIdMap = {};
         let liderIdx = 0, ganhadorIdx = 0;
         let carrosselLiderId = null, carrosselGanhadorId = null;
 
-        // === ALTERADO: FUNÇÃO SAVE MANDA PARA O FIREBASE E FAZ BACKUP LOCAL ===
-        function save() { 
-            dbRef.set(db); // Salva na Nuvem em tempo real
-            localStorage.setItem('dbv_data_v18', JSON.stringify(db)); // Backup Local
-            render(); 
+        // ============================================================
+        // FUNÇÕES DE PERSISTÊNCIA (FIREBASE)
+        // ============================================================
+
+        /**
+         * Salva o objeto `db` inteiro no Firestore e re-renderiza a UI.
+         * Substitui completamente o antigo: localStorage.setItem(...)
+         */
+        async function save() {
+            try {
+                await DOC_REF.set(db);
+            } catch(e) {
+                console.error("Erro ao salvar no Firebase:", e);
+                alert("Erro ao salvar dados. Verifique sua conexão.");
+            }
+            render();
         }
-        
+
+        /**
+         * Carrega os dados do Firestore na inicialização.
+         * Se não existir documento, cria com os dados padrão.
+         */
+        async function carregarDados() {
+            try {
+                const snap = await DOC_REF.get();
+                if (snap.exists) {
+                    db = snap.data();
+                    // Migrações e garantias para base de dados existente
+                    if(db.home.showHero !== undefined && db.home.heroesList === undefined) {
+                        db.home.heroesList = [];
+                        if(db.home.showHero) {
+                            db.home.heroesList.push({ imgs: db.home.heroImg, pos: db.home.heroPos || 'center', size: db.home.heroSize || 'cover', location: 'top' });
+                        }
+                    }
+                    if(db.home.logoUrl === undefined) db.home.logoUrl = "";
+                    if(!db.home.heroesList) db.home.heroesList = [];
+                    if(!db.home.ganhadores) db.home.ganhadores = [];
+                    if(db.home.showLideranca === undefined) db.home.showLideranca = true;
+                    if(db.home.showUnidades === undefined) db.home.showUnidades = true;
+                    if(db.home.showGanhadores === undefined) db.home.showGanhadores = true;
+                    if(!db.home.ganhadoresTitulo) db.home.ganhadoresTitulo = "Desbravadores Destaque";
+                    if(!db.home.subTitle) db.home.subTitle = "";
+                    if(!db.membros) db.membros = [];
+                    db.membros.forEach(m => { if(!m.historico) m.historico = []; });
+                    if(!db.unidades) db.unidades = [];
+                    db.unidades.forEach(u => { if(!u.cor) u.cor = '#333333'; });
+                    if(!db.usuarios) db.usuarios = [];
+                    db.usuarios.forEach(u => { if(!u.perms) u.perms = {}; if(u.perms.w === undefined) u.perms.w = u.tipo === 'geral'; });
+                } else {
+                    // Primeiro acesso: cria o documento com dados padrão
+                    db = JSON.parse(JSON.stringify(DB_PADRAO));
+                    await DOC_REF.set(db);
+                }
+            } catch(e) {
+                console.error("Erro ao carregar dados do Firebase:", e);
+                // Fallback para dados padrão em caso de erro de rede
+                db = JSON.parse(JSON.stringify(DB_PADRAO));
+                alert("Não foi possível conectar ao banco de dados. Exibindo dados padrão.");
+            }
+
+            // Esconde o overlay de carregamento e inicializa a UI
+            document.getElementById('loading-overlay').style.display = 'none';
+            render();
+            iniciarTimer();
+            toggleTimerInputs();
+        }
+
+        // ============================================================
+        // NAVEGAÇÃO
+        // ============================================================
         function navegarPara(id) { 
             document.querySelectorAll('.page').forEach(p => p.classList.remove('active')); 
             document.getElementById(id).classList.add('active'); 
@@ -679,7 +737,9 @@
             else alert("Acesso Negado! Verifique usuário e senha.");
         }
 
-        /* LÓGICA DE CUSTOMIZAÇÃO - MÍDIA */
+        // ============================================================
+        // LÓGICA DE CUSTOMIZAÇÃO - MÍDIA
+        // ============================================================
         function toggleTimerInputs() {
             const on = document.getElementById('cfg-timer-on').checked;
             document.getElementById('timer-settings').style.display = on ? 'block' : 'none';
@@ -705,7 +765,9 @@
             if(confirm("Apagar esta mídia?")) { db.home.gallery = db.home.gallery.filter(m => m.id !== id && db.home.gallery.indexOf(m) !== id /* fallback */); save(); }
         }
 
-        /* LÓGICA DE CUSTOMIZAÇÃO - HEROES */
+        // ============================================================
+        // LÓGICA DE CUSTOMIZAÇÃO - HEROES
+        // ============================================================
         function addHeroConfig() {
             const imgs = document.getElementById('new-hero-imgs').value;
             const loc = document.getElementById('new-hero-loc').value;
@@ -754,20 +816,19 @@
             alert("Site Personalizado com Sucesso!");
         }
 
-        /* SISTEMA DE HEROS RENDERIZAÇÃO */
+        // ============================================================
+        // SISTEMA DE HEROES - RENDERIZAÇÃO
+        // ============================================================
         function renderHeroes() {
             const h = db.home;
             const mapHtml = { 'top': '', 'mid': '', 'bottom': '' };
             
-            // Limpar intervalos antigos
             Object.values(slideIntervalIdMap).forEach(clearInterval);
             slideIntervalIdMap = {};
 
             h.heroesList.forEach((hero, idx) => {
                 const divId = `hero-dyn-${hero.id}`;
                 mapHtml[hero.location] += `<div id="${divId}" class="hero" style="display:block; background-position:${hero.pos}; background-size:${hero.size}; min-height:400px; margin-bottom:40px;"></div>`;
-                
-                // Agendar start slideshow após render do HTML
                 setTimeout(() => startSlideshow(divId, hero.imgs), 100);
             });
 
@@ -775,7 +836,6 @@
             document.getElementById('hero-mid-container').innerHTML = mapHtml['mid'];
             document.getElementById('hero-bottom-container').innerHTML = mapHtml['bottom'];
 
-            // Hero Default logic (Se não houver hero no top, exibe timer solto, se não oculta)
             const defaultHero = document.getElementById('home-hero-default');
             if (mapHtml['top'] === '') {
                 defaultHero.style.display = 'block';
@@ -783,7 +843,6 @@
                 defaultHero.style.boxShadow = 'none';
                 defaultHero.style.padding = '40px 20px';
             } else {
-                // Move os textos e timer para dentro do PRIMEIRO hero do top
                 setTimeout(() => {
                     const firstTopHero = document.getElementById('hero-top-container').firstElementChild;
                     if(firstTopHero) {
@@ -812,7 +871,9 @@
             }
         }
 
-        /* RENDERIZAÇÃO DA PÁGINA HOME E ADMIN */
+        // ============================================================
+        // RENDERIZAÇÃO PRINCIPAL DA UI
+        // ============================================================
         function render() {
             const h = db.home;
             const page = document.getElementById('home-page');
@@ -838,13 +899,11 @@
             }
             document.getElementById('footer-text').innerHTML = footHtml;
 
-            // Textos Home
             if(document.getElementById('home-title-display')) document.getElementById('home-title-display').innerText = h.title;
             if(document.getElementById('home-subtitle-display')) document.getElementById('home-subtitle-display').innerText = h.subTitle;
 
             renderHeroes();
 
-            // Timer Logic
             if(document.getElementById('timer-container')){
                 document.getElementById('timer-container').style.display = h.showTimer ? 'block' : 'none';
                 document.getElementById('timer-alt-display').style.display = h.showTimer ? 'none' : 'block';
@@ -857,7 +916,6 @@
                 }
             }
 
-            // Galeria
             document.getElementById('home-gallery-grid').innerHTML = h.gallery.map((m, i) => {
                 if(m.type === 'divider') {
                     return `<div class="gallery-card layout-title"><h2>${m.title||''}</h2><p>${m.desc||''}</p></div>`;
@@ -874,14 +932,14 @@
             `;
             }).join('');
 
-            // Preencher Inputs Custom
             if(document.getElementById('cfg-logo')) document.getElementById('cfg-logo').value = h.logoUrl || "";
             document.getElementById('cfg-title').value = h.title;
             document.getElementById('cfg-subtitle').value = h.subTitle;
             document.getElementById('cfg-footer').value = h.footer || "";
             if(h.social) { document.getElementById('cfg-footer-fb').value = h.social.fb; document.getElementById('cfg-footer-ig').value = h.social.ig; document.getElementById('cfg-footer-yt').value = h.social.yt; }
             document.getElementById('cfg-timer-on').checked = h.showTimer; document.getElementById('cfg-timer-date').value = h.timer;
-            document.getElementById('cfg-show-date').checked = h.showEventDate; document.getElementById('cfg-timer-replace').value = h.timerReplace;
+            document.getElementById('cfg-show-date').checked = h.showEventDate;
+            document.getElementById('cfg-timer-replace').value = h.timerReplace;
             document.getElementById('cfg-glow').checked = h.glow;
             document.getElementById('cfg-show-lideranca').checked = h.showLideranca;
             document.getElementById('cfg-show-unidades').checked = h.showUnidades;
@@ -892,16 +950,13 @@
             document.getElementById('clr-h-bg').value = h.colors.hBg === 'transparent' ? '#000000' : h.colors.hBg; 
             document.getElementById('clr-h-txt').value = h.colors.hTxt; document.getElementById('clr-f-bg').value = h.colors.fBg; document.getElementById('clr-f-txt').value = h.colors.fTxt;
 
-            // Admin Listas Customização
             document.getElementById('admin-heroes-list').innerHTML = h.heroesList.map(he => `<div class="admin-list-item"><span>${he.location.toUpperCase()} - ${he.imgs.substring(0,20)}...</span> <button onclick="delHeroConfig(${he.id})"><i class="fa-solid fa-trash"></i></button></div>`).join('');
             document.getElementById('admin-gallery-list').innerHTML = h.gallery.map(m => `<div class="admin-list-item"><span>${m.type==='divider'?'DIVISOR':m.type.toUpperCase()} - ${m.title || m.url.substring(0,20)}</span> <button onclick="delMedia(${m.id || h.gallery.indexOf(m)})"><i class="fa-solid fa-trash"></i></button></div>`).join('');
             
             document.getElementById('unidades-cores-list').innerHTML = db.unidades.filter(u=>u.nome!=='Administração').map(u => `<div class="color-row"><span>${u.nome}:</span> <input type="color" id="cor-unid-${u.nome.replace(/\s+/g,'-')}" value="${u.cor}"></div>`).join('');
 
-            // Home - Renderizar Liderança, Unidades e Ganhadores
             renderCarrosseisEUnidades();
 
-            // Painel
             if(!user) return;
             const isGeral = user.tipo === 'geral';
             const canEditAll = isGeral || user.perms.t;
@@ -945,11 +1000,12 @@
             renderRankings();
         }
 
-        /* LÓGICA DE CARROSSEIS E SHOWCASE (HOME) */
+        // ============================================================
+        // CARROSSEIS E SHOWCASE (HOME)
+        // ============================================================
         function renderCarrosseisEUnidades() {
             const h = db.home;
             
-            // LIDERANÇA
             const secLid = document.getElementById('lideranca-section');
             if(h.showLideranca) {
                 secLid.style.display = 'block';
@@ -960,7 +1016,6 @@
                 if(lideres.length > 1) carrosselLiderId = setInterval(nextLider, 3000);
             } else secLid.style.display = 'none';
 
-            // GANHADORES
             const secGanh = document.getElementById('ganhadores-section');
             if(h.showGanhadores) {
                 secGanh.style.display = 'block';
@@ -972,7 +1027,6 @@
                 if(g.length > 1) carrosselGanhadorId = setInterval(nextGanhador, 2000);
             } else secGanh.style.display = 'none';
 
-            // UNIDADES
             const secUnid = document.getElementById('unidades-showcase-section');
             if(h.showUnidades) {
                 secUnid.style.display = 'block';
@@ -1011,7 +1065,9 @@
             `).join('');
         }
 
-        /* SISTEMA DE PONTOS E HISTÓRICO */
+        // ============================================================
+        // SISTEMA DE PONTOS E HISTÓRICO
+        // ============================================================
         function abrirModalPontos(id, val) {
             const m = db.membros.find(x => x.id === id);
             if(!m) return;
@@ -1079,7 +1135,9 @@
             }
         }
 
-        /* GERENCIAR GANHADORES (HALL) */
+        // ============================================================
+        // GERENCIAR GANHADORES (HALL)
+        // ============================================================
         function cadastrarGanhador() {
             const n = document.getElementById('g-nome').value, f = document.getElementById('g-foto').value, e = document.getElementById('g-edicao').value;
             if(!n || !e) return alert("Nome e Edição são obrigatórios!");
@@ -1088,7 +1146,9 @@
         }
         function delGanhador(id) { if(confirm("Remover este ganhador do Hall da Fama?")) { db.home.ganhadores = db.home.ganhadores.filter(g => g.id !== id); save(); } }
 
-        /* RANKINGS */
+        // ============================================================
+        // RANKINGS
+        // ============================================================
         function renderRankings() {
             const topM = [...db.membros].sort((a,b) => b.pontos - a.pontos).slice(0,5);
             let medalhas = ['🥇', '🥈', '🥉', '🏅', '🏅'];
@@ -1106,9 +1166,12 @@
             `).join('');
         }
 
+        // ============================================================
+        // CRONÔMETRO
+        // ============================================================
         function iniciarTimer() {
             setInterval(() => {
-                if(!db.home.showTimer) return;
+                if(!db || !db.home.showTimer) return;
                 const alvo = new Date(db.home.timer).getTime(); const dist = alvo - new Date().getTime();
                 if(dist < 0) { 
                     if(document.getElementById('timer-display')) document.getElementById('timer-display').innerHTML = `<h2 style="color:var(--amarelo); text-shadow: 0 0 10px #000;">${db.home.timerReplace}</h2>`; return; 
@@ -1118,7 +1181,9 @@
             }, 1000);
         }
 
-        /* FUNÇÕES DE APOIO ORIGINAIS */
+        // ============================================================
+        // FUNÇÕES DE GESTÃO (USUÁRIOS, MEMBROS, UNIDADES)
+        // ============================================================
         function criarUsuario() {
             const u = document.getElementById('new-u').value, p = document.getElementById('new-p').value, unid = document.getElementById('new-unid-sel').value;
             if(!u || !p) return alert("Preencha usuário e senha!");
@@ -1153,47 +1218,28 @@
             if(confirm(`Tem certeza que deseja apagar a unidade ${u} e todos os seus membros?`)) { db.unidades = db.unidades.filter(x => x.nome !== u); db.usuarios = db.usuarios.filter(x => x.unid !== u); db.membros = db.membros.filter(x => x.unid !== u); save(); }
         }
         function alterarMinhaFoto(url) { user.foto = url; save(); }
-        
-        // === ALTERADO: RESET AGORA LIMPA O FIREBASE TAMBÉM ===
         function resetSistema() { 
             if(confirm("CUIDADO: Isso apagará TODOS os dados, membros e configurações do sistema. Deseja continuar?")) { 
-                dbRef.remove().then(() => {
-                    localStorage.clear(); 
-                    location.reload(); 
-                });
+                db = JSON.parse(JSON.stringify(DB_PADRAO));
+                DOC_REF.set(db).then(() => { location.reload(); }).catch(e => { console.error(e); location.reload(); });
             } 
         }
         function openFS(url) { document.getElementById('fs-img').src = url; document.getElementById('fullscreen-modal').style.display = 'flex'; }
 
-        /* SCROLL HEADER */
+        // ============================================================
+        // SCROLL HEADER
+        // ============================================================
         window.addEventListener("scroll", () => {
             const header = document.getElementById("main-header");
             if (window.scrollY > 50) { header.classList.add("scrolled"); header.classList.remove("initial-splash"); } 
             else { header.classList.remove("scrolled"); }
         });
 
-        // === ADICIONADO: ESCUTAR O FIREBASE EM TEMPO REAL ===
-        document.addEventListener('DOMContentLoaded', () => {
-            // Fica "escutando" o Firebase. Se mudar em um PC, muda aqui na hora.
-            dbRef.on('value', (snapshot) => {
-                const dadosNuvem = snapshot.val();
-                
-                if (dadosNuvem) {
-                    db = dadosNuvem;
-                    localStorage.setItem('dbv_data_v18', JSON.stringify(db)); // Atualiza o backup
-                } else {
-                    // Se o banco estiver vazio (primeira vez), manda o local pra lá
-                    dbRef.set(db);
-                }
-                
-                // Atualiza a tela com os dados novos
-                render(); 
-            });
-        });
-
-        // INICIALIZAÇÃO
-        document.body.classList.add('is-home'); 
-        render(); iniciarTimer(); toggleTimerInputs();
+        // ============================================================
+        // INICIALIZAÇÃO — carrega dados do Firebase antes de tudo
+        // ============================================================
+        document.body.classList.add('is-home');
+        carregarDados();
     </script>
 </body>
 </html>
